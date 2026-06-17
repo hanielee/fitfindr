@@ -127,66 +127,37 @@ For each tool, describe the specific failure mode you're handling and what the a
      sketch are all fine. You'll share this diagram with an AI tool when asking it to implement
      the planning loop and each individual tool. -->
 
-     User query (description, size, max_price, wardrobe)
-    │
-    ▼
-Planning Loop ──────────────────────────────────────────────────────────┐
-    │                                                                    │
-    ├─► search_listings(description, size, max_price)                   │
-    │       │ returns: ranked list of listing IDs                       │
-    │       ▼                                                            │
-    │   Session: validate IDs against load_listings(), drop unknowns     │
-    │       │                                                            │
-    │       │ results=[]  AND  retry_count < 2                          │
-    │       ├──► loosen constraint, retry_count += 1                    │
-    │       │      retry 1: max_price *= 1.5                            │
-    │       │      retry 2: treat size as soft preference                │
-    │       │      └──► back to search_listings ↑                       │
-    │       │                                                            │
-    │       │ results=[]  AND  retry_count == 2                         │
-    │       ├──► [ERROR] Session: error_message = "no listings found"   │
-    │       │         └──────────────────────────────────────────► RETURN
-    │       │                                                            │
-    │       │ results=[item, ...]                                       │
-    │       ▼                                                            │
-    │   Session: selected_item = results[0]                              │
-    │       │                                                            │
-    │       │ wardrobe["items"] == []                                    │
-    │       ├──► Session: outfit = None, wardrobe_empty = True ───────┐  │
-    │       │      (suggest_outfit call skipped)                      │  │
-    │       │                                                          │  │
-    │       │ wardrobe["items"] != []                                  │  │
-    ├─► suggest_outfit(selected_item, wardrobe)                        │  │
-    │       │ exception raised                                         │  │
-    │       ├──► Session: outfit = None, styling_failed = True ────────┤  │
-    │       │                                                          │  │
-    │       │ returns outfit_suggestion referencing an item            │  │
-    │       │ not in wardrobe["items"] (hallucinated)                  │  │
-    │       ├──► retry once with stricter prompt                       │  │
-    │       │       │ still invalid                                    │  │
-    │       │       ├──► Session: outfit = None, styling_failed=True ──┤  │
-    │       │       │ valid                                            │  │
-    │       │       └──► Session: outfit = retry result ───────────────┤  │
-    │       │                                                          │  │
-    │       │ outfit_suggestion valid on first try                     │  │
-    │       └──► Session: outfit = outfit_suggestion ────────────────────┤  │
-    │                                                                    │  │
-    │       ◄─────────────────────────────────────────────────────────────┘  │
-    │       │                                                                  │
-    ├─► create_fit_card(outfit, selected_item)                                │
-    │       │ exception raised                                                │
-    │       ├──► [DEGRADED] Session: degraded_output = True                  │
-    │       │      fit_card = raw selected_item fields + raw outfit text     │
-    │       │      └──────────────────────────────────────────────────► RETURN
-    │       │                                                                  │
-    │       │ returns caption                                                  │
-    │       ▼                                                                  │
-    │   Session: final_caption = caption                                       │
-    │      (append note if wardrobe_empty or styling_failed is set)            │
-    │       │                                                                  │
-    └───────┴──────────────────────────────────────────────────────────────────┘
-            ▼
-        Return session (final_caption | error_message | degraded_output)
+     ```mermaid
+flowchart TD
+    A["User query<br/>description, size, max_price, wardrobe"] --> B["search_listings(description, size, max_price)"]
+    B --> C["Validate returned IDs against load_listings()<br/>drop unknown IDs"]
+    C --> D{"results empty?"}
+    D -->|empty, retries remain| E["Loosen constraint, retry_count += 1<br/>retry 1: increase max_price by 50%<br/>retry 2: treat size as soft preference"]
+    E --> B
+    D -->|empty, retries exhausted| F["ERROR<br/>Session.error_message = 'no listings found'"]
+    F --> G(["RETURN error_message"])
+    D -->|results found| H["Session.selected_item = results[0]"]
+    H --> I{"wardrobe.items empty?"}
+    I -->|yes| J["Session.outfit = None<br/>Session.wardrobe_empty = True<br/>suggest_outfit skipped"]
+    I -->|no| K["suggest_outfit(selected_item, wardrobe)"]
+    K --> L{"exception raised?"}
+    L -->|yes| M["Session.outfit = None<br/>Session.styling_failed = True"]
+    L -->|no| N{"references wardrobe item<br/>not in wardrobe.items?"}
+    N -->|yes, hallucinated| O["Retry once with stricter prompt"]
+    O --> P{"still invalid?"}
+    P -->|yes| M
+    P -->|no, valid| Q["Session.outfit = retry result"]
+    N -->|no, valid| R["Session.outfit = outfit_suggestion"]
+    J --> S["create_fit_card(outfit, selected_item)"]
+    M --> S
+    Q --> S
+    R --> S
+    S --> T{"exception raised?"}
+    T -->|yes| U["DEGRADED<br/>Session.degraded_output = True<br/>fit_card = raw selected_item fields + raw outfit text"]
+    U --> V(["RETURN degraded_output"])
+    T -->|no| W["Session.final_caption = caption<br/>append note if wardrobe_empty or styling_failed"]
+    W --> X(["RETURN final_caption"])
+```
 
 ---
 
