@@ -127,7 +127,7 @@ For each tool, describe the specific failure mode you're handling and what the a
      sketch are all fine. You'll share this diagram with an AI tool when asking it to implement
      the planning loop and each individual tool. -->
 
-     ```mermaid
+```mermaid
 flowchart TD
     A["User query<br/>description, size, max_price, wardrobe"] --> B["search_listings(description, size, max_price)"]
     B --> C["Validate returned IDs against load_listings()<br/>drop unknown IDs"]
